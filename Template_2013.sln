@@ -1,6 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
+# Visual Studio 2013
+VisualStudioVersion = 12.0.21005.1
+MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Demo", "Demo\Demo_2013.vcxproj", "{3CABED2C-12F1-4408-AAAE-E2185A426F35}"
 	ProjectSection(ProjectDependencies) = postProject
 		{DF460EAB-570D-4B50-9089-2E2FC801BF38} = {DF460EAB-570D-4B50-9089-2E2FC801BF38}
@@ -17,6 +19,11 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MakeSpriteFont", "DirectXTK\MakeSpriteFont\MakeSpriteFont.csproj", "{7329B02D-C504-482A-A156-181D48CE493C}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AntTweakBar", "AntTweakBar\src\AntTweakBar_2013.vcxproj", "{B99E1FA1-C30A-45F2-9D57-9E9C21B2DF42}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4C2882C2-5612-45C8-9426-FF19DAA70B34}"
+	ProjectSection(SolutionItems) = preProject
+		Demo\collisionDetect.h = Demo\collisionDetect.h
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

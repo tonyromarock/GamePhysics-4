@@ -8,6 +8,9 @@
     <ClCompile Include="util\FFmpeg.cpp">
       <Filter>util</Filter>
     </ClCompile>
+    <ClCompile Include="Point.cpp" />
+    <ClCompile Include="RigidBody.cpp" />
+    <ClCompile Include="Box.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="util">
@@ -21,6 +24,9 @@
     <ClInclude Include="util\FFmpeg.h">
       <Filter>util</Filter>
     </ClInclude>
+    <ClInclude Include="RigidBody.h" />
+    <ClInclude Include="Point.h" />
+    <ClInclude Include="Box.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="effect.fx" />

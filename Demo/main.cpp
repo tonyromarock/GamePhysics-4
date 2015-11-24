@@ -37,6 +37,9 @@ using std::cout;
 #include "util/util.h"
 #include "util/FFmpeg.h"
 
+// Own Includes (Peter)
+#include "Point.h"
+
 #define TEMPLATE_DEMO
 //#define MASS_SPRING_SYSTEM
 

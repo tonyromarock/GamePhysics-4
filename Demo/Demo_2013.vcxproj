@@ -208,11 +208,17 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Box.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Point.cpp" />
+    <ClCompile Include="RigidBody.cpp" />
     <ClCompile Include="util\FFmpeg.cpp" />
     <ClCompile Include="util\util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Box.h" />
+    <ClInclude Include="Point.h" />
+    <ClInclude Include="RigidBody.h" />
     <ClInclude Include="util\FFmpeg.h" />
     <ClInclude Include="util\util.h" />
   </ItemGroup>
