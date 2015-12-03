@@ -7,6 +7,8 @@ Point::Point(XMVECTOR* position, bool fixed) :fixed(fixed)
 {
 	position = position;
 	mass = *f_Mass;
+	int_F = XMVectorSet(0.f, 0.f, 0.f, 0.f);
+	ext_F = XMVectorSet(0.f, 0.f, 0.f, 0.f);
 }
 
 Point::~Point(){}

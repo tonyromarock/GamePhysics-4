@@ -39,6 +39,9 @@ using std::cout;
 
 // Own Includes (Peter)
 #include "Point.h"
+#include "Box.h"
+#include "collisionDetect.h"
+#include <math.h> // for PI
 
 #define TEMPLATE_DEMO
 //#define MASS_SPRING_SYSTEM
@@ -93,9 +96,28 @@ float g_fSphereSize    = 0.05f;
 bool  g_bDrawTeapot    = true;
 bool  g_bDrawTriangle  = true;
 bool  g_bDrawSpheres = true;
+// self added variables
+bool	g_bDrawBoxes = true;
+float	h_timeStep = 0.1f;
+float	g_fGravity = -9.18f;
+float	g_fMass = 2.0f;
 #endif
 //#ifdef MASS_SPRING_SYSTEM
 //#endif
+
+// Physics objects
+
+std::vector<Box*> boxes;
+
+// added functions
+
+void DrawBoxes(ID3D11DeviceContext* pd3dImmediateContext);
+void nextStep(float timeStep);
+Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation);
+void RigidBodyInit();
+void PhysicValuesInit();
+
+
 
 // Video recorder
 FFmpeg* g_pFFmpegVideoRecorder = nullptr;
@@ -106,7 +128,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     g_pTweakBar = TwNewBar("TweakBar");
 	TwDefine(" TweakBar color='0 128 128' alpha=128 ");
 
-	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3");
+	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1");
 	TwAddVarRW(g_pTweakBar, "Test Scene", TW_TYPE_TESTCASE, &g_iTestCase, "");
 	// HINT: For buttons you can directly pass the callback function as a lambda expression.
 	TwAddButton(g_pTweakBar, "Reset Scene", [](void *){g_iPreTestCase = -1; }, nullptr, "");
@@ -128,6 +150,9 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 	case 2:
 		TwAddVarRW(g_pTweakBar, "Draw Triangle", TW_TYPE_BOOLCPP, &g_bDrawTriangle, "");
 		break;
+	case 4:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		break;
 	default:
 		break;
 	}
@@ -135,6 +160,32 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 
 //#ifdef MASS_SPRING_SYSTEM
 //#endif
+}
+
+// Draw the Boxes for the Rigid Body Simulation
+
+void DrawBoxes(ID3D11DeviceContext* pd3dImmediateContext)
+{
+	pd3dImmediateContext->IASetInputLayout(g_pInputLayoutPositionColor);
+	
+	// index buffer
+	int index[12][3] = { { 0, 2, 1 }, { 1, 2, 3 }, { 4, 5, 6 }, { 6, 5, 7 }, { 0, 1, 4 }, { 4, 1, 5 }, { 6, 7, 2 }, { 2, 7, 3 }, { 0, 4, 2 }, { 2, 4, 6 }, { 3, 7, 1 }, { 1, 7, 5 } };
+	
+	for (auto box: boxes) {
+		g_pEffectPositionColor->SetWorld(XMMatrixRotationQuaternion(box->orientation) * box->transform);
+		g_pEffectPositionColor->Apply(pd3dImmediateContext);
+
+		for (auto vertice : index)
+		{
+			g_pPrimitiveBatchPositionColor->Begin();
+
+			g_pPrimitiveBatchPositionColor->DrawTriangle(VertexPositionColor(box->corners[vertice[0]], Colors::Red),
+				VertexPositionColor(box->corners[vertice[1]], Colors::Green),
+				VertexPositionColor(box->corners[vertice[2]], Colors::Yellow));
+			g_pPrimitiveBatchPositionColor->End();
+		}
+
+	}
 }
 
 // Draw the edges of the bounding box [-0.5;0.5]³ rotated with the cameras model tranformation.
@@ -429,6 +480,8 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 
     g_pSphere.reset();
     g_pTeapot.reset();
+
+	for each (auto box in boxes) { delete box; }
     
     SAFE_DELETE (g_pPrimitiveBatchPositionColor);
     SAFE_RELEASE(g_pInputLayoutPositionColor);
@@ -580,6 +633,8 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 {
 	UpdateWindowTitle(L"Demo");
 
+	static float time_counter = 0;
+
 	// Move camera
 	g_camera.FrameMove(fElapsedTime);
 
@@ -617,6 +672,11 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 		case 2:
 			cout << "Test2!\n";
 			g_bDrawTriangle = true;
+			break;
+		case 4:
+			cout << "Demo1\n";
+			g_bDrawBoxes = true;
+			RigidBodyInit();
 			break;
 		default:
 			cout << "Empty Test!\n";
@@ -665,6 +725,14 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 		if (g_vfRotate.z > 2 * M_PI) g_vfRotate.z -= 2 * M_PI;
 
 		break;
+	case 4:
+		time_counter += fElapsedTime;
+		if (time_counter > h_timeStep)
+		{
+			nextStep(h_timeStep);
+			time_counter -= h_timeStep;
+		}
+		break;
 	default:
 		break;
 	}
@@ -698,6 +766,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
     // Draw axis box
     DrawBoundingBox(pd3dImmediateContext);
 
+
 #ifdef TEMPLATE_DEMO
 	switch (g_iTestCase)
 	{
@@ -713,11 +782,23 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 		// Draw simple triangle
 		if (g_bDrawTriangle) DrawTriangle(pd3dImmediateContext);
 		break;
+	case 4:
+		// Draw a box
+		if (g_bDrawBoxes)	{
+			DrawBoxes(pd3dImmediateContext);
+			for each (auto box in boxes)
+			{
+				cout << XMVectorGetByIndex(box->position,0) <<
+					", " << XMVectorGetByIndex(box->position, 1) <<
+					", " << XMVectorGetByIndex(box->position, 2) << "\n";
+			}
+		}
+		break;
 	default:
 		break;
 	}
 #endif
-    
+
 //#ifdef MASS_SPRING_SYSTEM
 //#endif
 
@@ -728,6 +809,65 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
     {
         V(g_pFFmpegVideoRecorder->AddFrame(pd3dImmediateContext, DXUTGetD3D11RenderTargetView()));
     }
+}
+
+// Physics objects functions
+
+Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation)
+{
+	Box* b = new Box(x, y, z, pos, mass, fixed, orientation);
+	boxes.push_back(b);
+	return b;
+}
+
+void nextStep(float timeStep)
+{
+	// compare with slide 14 of "lecture06_rb3d"
+	for each(auto box in boxes)
+	{
+		if (box->centerOfMass.fixed) { continue; }
+
+		// Euler step
+		box->position += box->velocity * timeStep;
+		box->transform = XMMatrixTranslationFromVector(box->position);
+		box->velocity += (box->centerOfMass.getTotalForce() / box->centerOfMass.mass) * timeStep;
+
+		// Quaternion
+		box->orientation = XMQuaternionNormalize(box->orientation + 
+			XMQuaternionMultiply((timeStep / 2.0f) * XMVectorSetW(box->angularVelocity, 0.0f), box->orientation));
+
+		box->angularMomentum += box->torqueAccumulator * timeStep;
+
+		XMMATRIX rotation = XMMatrixRotationQuaternion(box->orientation);
+		XMMATRIX inertiaTensorInverse = rotation * box->intertiaTensorInverse * XMMatrixTranspose(rotation);
+
+		box->angularVelocity = XMVector3Transform(box->angularMomentum, inertiaTensorInverse);
+		box->clearTorque();
+		box->centerOfMass.clearForces();
+
+	}
+}
+
+void RigidBodyInit()
+{
+	for each (auto box in boxes)
+	{
+		delete box;
+	}
+
+	boxes.clear();
+
+	Box* boxA;
+
+	// notice: rotate around z axis by 90
+	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0.f, 0.f), 2.f, false, XMQuaternionRotationAxis(XMVectorSet(0.f, 0.f, 1.f, 0.f), 90));
+	// XMQuaternionRotationAxis(XMVectorSet(0.f, 0.f, 1.f, 0.f), M_PI_2)
+}
+
+void PhysicValuesInit()
+{
+	Point::f_Mass = &g_fMass;
+	Point::f_Gravity = &g_fGravity;
 }
 
 //--------------------------------------------------------------------------------------
@@ -773,6 +913,9 @@ int main(int argc, char* argv[])
 	DXUTSetCursorSettings( true, true ); // Show the cursor and clip it when in full screen
 	DXUTCreateWindow( L"Demo" );
 	DXUTCreateDevice( D3D_FEATURE_LEVEL_11_0, true, 1280, 960 );
+
+	// Init Physics Values (point mass and gravity constant)
+	PhysicValuesInit();
     
 	DXUTMainLoop(); // Enter into the DXUT render loop
 

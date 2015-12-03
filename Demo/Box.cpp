@@ -3,7 +3,11 @@
 Box::Box(float x, float y, float z, XMVECTOR position, float mass, bool fixed, XMVECTOR orientation)
 {
 	this->position = position;
+	this->velocity = XMVectorSet(0.f, 0.f, 0.f, 0.f);
 	length = XMVectorSet(x, y, z, 0.f);
+	
+	centerOfMass = Point(&this->position, false);
+
 	this->transform = XMMatrixTranslationFromVector(this->position);
 	this->centerOfMass.fixed = fixed;
 	this->orientation = XMQuaternionRotationRollPitchYawFromVector(orientation);
@@ -24,11 +28,18 @@ Box::Box(float x, float y, float z, XMVECTOR position, float mass, bool fixed, X
 			XMVectorSet(0.f, prefix * (x*x + z*z), 0.f, 0.f),
 			XMVectorSet(0.f, 0.f, prefix*(x*x + y*y),0.f),
 			XMVectorSet(0.f, 0.f, 0.f, 1.f));
+		intertiaTensorInverse = XMMatrixInverse(&XMMatrixDeterminant(matrix), matrix);
 	}
 
 	XMVECTOR xLength = XMVectorSet(x, 0.f, 0.f, 0.f) / 2;
 	XMVECTOR yLength = XMVectorSet(0.f, y, 0.f, 0.f) / 2;
 	XMVECTOR zLength = XMVectorSet(0.f, 0.f, z, 0.f) / 2;
+
+	this->angularMomentum = XMVECTOR();
+	this->angularVelocity = XMVECTOR();
+	this->torqueAccumulator = XMVECTOR();
+
+
 
 	corners[0] = -xLength - yLength - zLength;
 	corners[1] = xLength - yLength - zLength;
