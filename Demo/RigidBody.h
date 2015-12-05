@@ -8,7 +8,7 @@ using namespace DirectX;
 class RigidBody 
 {
 public:
-	Point centerOfMass = Point(&XMVectorSet(0.f, 0.f, 0.f, 0.f), true);
+	Point centerOfMass = Point(XMVectorSet(0.f, 0.f, 0.f, 0.f), true);
 	float massInverse;
 	XMVECTOR position;
 	XMVECTOR velocity;
@@ -23,5 +23,6 @@ public:
 
 	void addTorque(XMVECTOR torque, XMVECTOR position);
 	void clearTorque();
+	void addVelocity(float x, float y, float z);
 
 };

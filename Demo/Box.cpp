@@ -6,7 +6,7 @@ Box::Box(float x, float y, float z, XMVECTOR position, float mass, bool fixed, X
 	this->velocity = XMVectorSet(0.f, 0.f, 0.f, 0.f);
 	length = XMVectorSet(x, y, z, 0.f);
 	
-	centerOfMass = Point(&this->position, false);
+	centerOfMass = Point(position, false);
 
 	this->transform = XMMatrixTranslationFromVector(this->position);
 	this->centerOfMass.fixed = fixed;
@@ -34,6 +34,11 @@ Box::Box(float x, float y, float z, XMVECTOR position, float mass, bool fixed, X
 	XMVECTOR xLength = XMVectorSet(x, 0.f, 0.f, 0.f) / 2;
 	XMVECTOR yLength = XMVectorSet(0.f, y, 0.f, 0.f) / 2;
 	XMVECTOR zLength = XMVectorSet(0.f, 0.f, z, 0.f) / 2;
+
+	for (int i = 0; i < 8; i++) 
+	{
+		corners[0] = XMVECTOR();
+	}
 
 	this->angularMomentum = XMVECTOR();
 	this->angularVelocity = XMVECTOR();

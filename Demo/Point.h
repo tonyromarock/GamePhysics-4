@@ -17,10 +17,10 @@ public:
 	bool fixed;
 	float mass;
 
-	Point(XMVECTOR* position, bool fixed);
+	Point(XMVECTOR position, bool fixed);
 	~Point();
 	void clearForces();
-	void addGravity();
+	void addGravity(float timeStep);
 	void addIntF(XMVECTOR vec);
 	void addExtF(XMVECTOR vec);
 	XMVECTOR getTotalForce();

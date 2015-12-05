@@ -98,9 +98,11 @@ bool  g_bDrawTriangle  = true;
 bool  g_bDrawSpheres = true;
 // self added variables
 bool	g_bDrawBoxes = true;
+bool	g_bApplyGravity = false;
 float	h_timeStep = 0.1f;
 float	g_fGravity = -9.18f;
 float	g_fMass = 2.0f;
+float	g_fCConst = 0.1f;	// constant for collision handling
 #endif
 //#ifdef MASS_SPRING_SYSTEM
 //#endif
@@ -114,8 +116,10 @@ std::vector<Box*> boxes;
 void DrawBoxes(ID3D11DeviceContext* pd3dImmediateContext);
 void nextStep(float timeStep);
 Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation);
-void RigidBodyInit();
+void RigidBodyInit(int mode);
 void PhysicValuesInit();
+void printVector(XMVECTOR vec);
+void RigidCollInit();
 
 
 
@@ -128,7 +132,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     g_pTweakBar = TwNewBar("TweakBar");
 	TwDefine(" TweakBar color='0 128 128' alpha=128 ");
 
-	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1");
+	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4");
 	TwAddVarRW(g_pTweakBar, "Test Scene", TW_TYPE_TESTCASE, &g_iTestCase, "");
 	// HINT: For buttons you can directly pass the callback function as a lambda expression.
 	TwAddButton(g_pTweakBar, "Reset Scene", [](void *){g_iPreTestCase = -1; }, nullptr, "");
@@ -151,6 +155,13 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Draw Triangle", TW_TYPE_BOOLCPP, &g_bDrawTriangle, "");
 		break;
 	case 4:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		break;
+	case 5:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
+		break;
+	case 6:
 		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
 		break;
 	default:
@@ -676,7 +687,17 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 		case 4:
 			cout << "Demo1\n";
 			g_bDrawBoxes = true;
-			RigidBodyInit();
+			RigidBodyInit(4);
+			break;
+		case 5:
+			cout << "Demo2\n";
+			g_bDrawBoxes = true;
+			RigidBodyInit(5);
+			break;
+		case 6:
+			cout << "Demo3\n";
+			g_bDrawBoxes = true;
+			RigidCollInit();
 			break;
 		default:
 			cout << "Empty Test!\n";
@@ -726,6 +747,8 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 
 		break;
 	case 4:
+	case 5:
+	case 6:
 		time_counter += fElapsedTime;
 		if (time_counter > h_timeStep)
 		{
@@ -783,15 +806,17 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 		if (g_bDrawTriangle) DrawTriangle(pd3dImmediateContext);
 		break;
 	case 4:
+	case 5:
+	case 6:
 		// Draw a box
 		if (g_bDrawBoxes)	{
 			DrawBoxes(pd3dImmediateContext);
-			for each (auto box in boxes)
+			/*for each (auto box in boxes)
 			{
 				cout << XMVectorGetByIndex(box->position,0) <<
 					", " << XMVectorGetByIndex(box->position, 1) <<
 					", " << XMVectorGetByIndex(box->position, 2) << "\n";
-			}
+			}*/
 		}
 		break;
 	default:
@@ -826,11 +851,17 @@ void nextStep(float timeStep)
 	for each(auto box in boxes)
 	{
 		if (box->centerOfMass.fixed) { continue; }
+		if (g_iTestCase == 5 && g_bApplyGravity)
+		{
+			box->centerOfMass.addGravity(timeStep);
+			box->torqueAccumulator += box->centerOfMass.getTotalForce();
+		}
+
 
 		// Euler step
 		box->position += box->velocity * timeStep;
 		box->transform = XMMatrixTranslationFromVector(box->position);
-		box->velocity += (box->centerOfMass.getTotalForce() / box->centerOfMass.mass) * timeStep;
+		box->velocity += (box->torqueAccumulator / box->centerOfMass.mass) * timeStep;
 
 		// Quaternion
 		box->orientation = XMQuaternionNormalize(box->orientation + 
@@ -842,13 +873,55 @@ void nextStep(float timeStep)
 		XMMATRIX inertiaTensorInverse = rotation * box->intertiaTensorInverse * XMMatrixTranspose(rotation);
 
 		box->angularVelocity = XMVector3Transform(box->angularMomentum, inertiaTensorInverse);
+
 		box->clearTorque();
 		box->centerOfMass.clearForces();
 
 	}
+
+	for each (auto box1 in boxes) 
+	{
+		for each (auto box2 in boxes) 
+		{
+			if (box1 == box2) { continue; }
+
+			CollisionInfo info = checkCollision(XMMatrixRotationQuaternion(box1->orientation) * box1->transform,
+				XMMatrixRotationQuaternion(box2->orientation)* box2->transform);
+
+			if (info.isValid) 
+			{
+				if (XMVectorGetByIndex(XMVector3Dot(box1->velocity - box2->velocity, -info.normalWorld), 0) > 0){ continue; }
+
+				// top and bottom half of the fraction
+				float j_up = 0.f;
+				float j_down = 0.f;
+
+				j_up = -(1.0f + g_fCConst) * XMVectorGetByIndex(XMVector3Dot(box1->velocity - box2->velocity, -info.normalWorld), 0);
+				j_down =
+					box1->massInverse +
+					box2->massInverse +
+					XMVectorGetByIndex(XMVector3Dot(
+					XMVector3Cross(XMVector3Transform(XMVector3Cross(box1->position, info.normalWorld),box1->intertiaTensorInverse), box1->position)
+					+ XMVector3Cross(XMVector3Transform(XMVector3Cross(box2->position, info.normalWorld), box2->intertiaTensorInverse), box2->position)
+					,info.normalWorld
+					), 0);
+
+				float j = j_up / j_down;
+
+				box1->velocity = box1->velocity - (j * info.normalWorld * box1->massInverse);
+				box2->velocity = box2->velocity + (j * info.normalWorld * box2->massInverse);
+
+				box1->angularMomentum = box1->angularMomentum - XMVector3Cross(box1->position, (j * info.normalWorld));
+				box2->angularMomentum = box2->angularMomentum + XMVector3Cross(box2->position, (j * info.normalWorld));
+
+			}
+
+
+		}
+	}
 }
 
-void RigidBodyInit()
+void RigidBodyInit(int mode)
 {
 	for each (auto box in boxes)
 	{
@@ -858,16 +931,73 @@ void RigidBodyInit()
 	boxes.clear();
 
 	Box* boxA;
+	XMVECTOR boxA_cm_pos;
 
-	// notice: rotate around z axis by 90
-	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0.f, 0.f), 2.f, false, XMQuaternionRotationAxis(XMVectorSet(0.f, 0.f, 1.f, 0.f), 90));
-	// XMQuaternionRotationAxis(XMVectorSet(0.f, 0.f, 1.f, 0.f), M_PI_2)
+	switch (mode)
+	{
+	case 4:
+		h_timeStep = 2.0f;
+		
+		g_bApplyGravity = false;
+
+		// notice: rotate around z axis by 90
+		boxA_cm_pos = XMVectorSet(0.f, 0.f, 0.f, 0.f);
+		boxA = addBox(1.f, 0.6f, 0.5f, boxA_cm_pos, 2.f, false, XMVectorSet(0.f, 0.f, M_PI_2, 0.f));
+		
+		boxA->addTorque(XMVectorSet(1.f, 1.f, 0.f, 0.f), XMVectorSet(0.3f, 0.5f, 0.25f, 0.f));
+
+		nextStep(h_timeStep);
+
+		cout << "After one timestep (2.0)\n";
+		cout << "Linear Velocity: "; printVector(boxA->velocity);
+		cout << "Angular Velocity: "; printVector(boxA->angularVelocity);
+		cout << "World Space of (-0.3, -0.5, -0.25): ";														// v_i = (x_i+1 - x_i)/2
+		printVector( (boxA->position - (boxA->corners[0] - boxA->position) - boxA->corners[0]) * (0.5f));	// corners[0] (-,-,-)
+		break;
+	case 5:
+		h_timeStep = 0.1f;
+
+		// notice: rotate around z axis by 90
+		boxA_cm_pos = XMVectorSet(0.f, 0.f, 0.f, 0.f);
+		boxA = addBox(1.f, 0.6f, 0.5f, boxA_cm_pos, 2.f, false, XMVectorSet(0.f, 0.f, M_PI_2, 0.f));
+
+		boxA->addTorque(XMVectorSet(1.f, 1.f, 0.f, 0.f), XMVectorSet(0.3f, 0.5f, 0.25f, 0.f));
+		break;
+	}
+	
+}
+
+// for Demo3 a collision
+void RigidCollInit() 
+{
+	for each (auto box in boxes)
+	{
+		delete box;
+	}
+
+	boxes.clear();
+
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+	Box* boxA; Box* boxB;
+
+	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f,0.f,0.,0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
+	boxB = addBox(1.f, 0.6f, 0.5f, XMVectorSet(7.0f, 0.f, 0.f, 0.f), 2.f, false, XMVectorSet(M_PI/3.f,M_PI / 3.0f, M_PI_2, 0.f));
+
+	boxA->addVelocity(0.5f, 0.f, 0.f);
+	boxB->addVelocity(-2.0f, 0.f, 0.f);
+
 }
 
 void PhysicValuesInit()
 {
 	Point::f_Mass = &g_fMass;
 	Point::f_Gravity = &g_fGravity;
+}
+
+void printVector(XMVECTOR vec) 
+{
+	cout << "(" << XMVectorGetByIndex(vec, 0) << "| " << XMVectorGetByIndex(vec, 1) << "| " << XMVectorGetByIndex(vec, 2) << ")\n";
 }
 
 //--------------------------------------------------------------------------------------
