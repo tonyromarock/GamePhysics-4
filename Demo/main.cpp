@@ -103,6 +103,7 @@ float	h_timeStep = 0.1f;
 float	g_fGravity = -9.18f;
 float	g_fMass = 2.0f;
 float	g_fCConst = 0.1f;	// constant for collision handling
+float	g_fTimeSpeedUp = 1.0f;
 #endif
 //#ifdef MASS_SPRING_SYSTEM
 //#endif
@@ -120,6 +121,7 @@ void RigidBodyInit(int mode);
 void PhysicValuesInit();
 void printVector(XMVECTOR vec);
 void RigidCollInit();
+void Demo_4_Init();
 
 
 
@@ -163,6 +165,14 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		break;
 	case 6:
 		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		break;
+	case 7:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
 		break;
 	default:
 		break;
@@ -699,6 +709,11 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 			g_bDrawBoxes = true;
 			RigidCollInit();
 			break;
+		case 7:
+			cout << "Demo4\n";
+			g_bDrawBoxes = true;
+			Demo_4_Init();
+			break;
 		default:
 			cout << "Empty Test!\n";
 			break;
@@ -749,11 +764,12 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 	case 4:
 	case 5:
 	case 6:
+	case 7:
 		time_counter += fElapsedTime;
-		if (time_counter > h_timeStep)
+		if (time_counter > (h_timeStep/g_fTimeSpeedUp))
 		{
-			nextStep(h_timeStep);
-			time_counter -= h_timeStep;
+			nextStep(h_timeStep/g_fTimeSpeedUp);
+			time_counter -= h_timeStep/g_fTimeSpeedUp;
 		}
 		break;
 	default:
@@ -808,6 +824,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 	case 4:
 	case 5:
 	case 6:
+	case 7:
 		// Draw a box
 		if (g_bDrawBoxes)	{
 			DrawBoxes(pd3dImmediateContext);
@@ -851,7 +868,7 @@ void nextStep(float timeStep)
 	for each(auto box in boxes)
 	{
 		if (box->centerOfMass.fixed) { continue; }
-		if (g_iTestCase == 5 && g_bApplyGravity)
+		if ((g_iTestCase == 5 || g_iTestCase == 7) && g_bApplyGravity)
 		{
 			box->centerOfMass.addGravity(timeStep);
 			box->torqueAccumulator += box->centerOfMass.getTotalForce();
@@ -987,6 +1004,33 @@ void RigidCollInit()
 	boxA->addVelocity(0.5f, 0.f, 0.f);
 	boxB->addVelocity(-2.0f, 0.f, 0.f);
 
+}
+
+void Demo_4_Init()
+{
+	for each (auto box in boxes)
+	{
+		delete box;
+	}
+
+	boxes.clear();
+
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+	Box* boxA; Box* boxB; Box* boxC; Box* boxD;
+
+	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0., 0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
+	boxB = addBox(1.f, 1.6f, 0.7f, XMVectorSet(7.0f, 0.f, 0.f, 0.f), 2.f, false, XMVectorSet(M_PI / 3.f, M_PI / 3.0f, M_PI_2, 0.f));
+	boxC = addBox(0.6f, 0.6f, 0.6f, XMVectorSet(2.0f, 5.0f, 0.2f, 0.f), 2.f, false, XMVectorSet(0.f, 0.f, M_PI / 3.0f, 0.f));
+	boxD = addBox(1.5f, 0.2f, 0.2f, XMVectorSet(0.f, 5.0f, 5.0f, 0.f), 2.f, false, XMVectorSet(0.f, M_PI / 3.0f, 0.f, 0.f));
+
+	boxA->addVelocity(0.5f, 0.f, 0.f);
+	boxB->addVelocity(-2.0f, 0.f, 0.f);
+	boxC->addVelocity(0.f, 0.f, 4.5f);
+	boxD->addVelocity(0.f, -1.0f, -1.0f);
+
+	boxA->addTorque(XMVectorSet(2.0f, 0.3f, 0.f, 0.f), boxA->position + XMVectorSet(0.2f, 0.2f, 0.2f, 0.0f));
+	boxC->addTorque(XMVectorSet(0.3f, 0.2f, 0.4f, 0.f), boxA->position + XMVectorSet(0.2f, 0.2f, 0.2f, 0.0f));
 }
 
 void PhysicValuesInit()
