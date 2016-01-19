@@ -17,6 +17,10 @@ public:
 	bool fixed;
 	float mass;
 
+	// for midpoint xtmp and vtmp
+	XMVECTOR xtmp;
+	XMVECTOR vtmp;
+
 	Point(XMVECTOR position, bool fixed);
 	~Point();
 	void clearForces();
