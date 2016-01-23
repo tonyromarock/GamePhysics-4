@@ -12,7 +12,7 @@ public:
 
 	float org_length; // spring length when idle
 	float stiffness;
-	float* damping;	
+	static float* damping;	
 	XMVECTOR forces;
 
 	Spring(Point* point1, Point* point2, float stiffness);

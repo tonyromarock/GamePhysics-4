@@ -3,20 +3,20 @@
 // help function
 float getDistance(XMVECTOR* p, XMVECTOR* q);
 
-
+float* Spring::damping = nullptr;
 
 Spring::Spring(Point* point1, Point* point2, float stiffness) : point1(point1), point2(point2), stiffness(stiffness)
 {
 	org_length = getDistance(&point1->position, &point2->position);
-	damping = nullptr;
 	forces = XMVECTOR();
 }
 
 Spring::Spring(Point* point1, Point* point2, float o_length, float stiffness) : point1(point1), point2(point2), org_length(o_length), stiffness(stiffness)
 {
-	damping = nullptr;
 	forces = XMVECTOR();
 }
+
+Spring::~Spring(){}
 
 void Spring::computeSpringForces()
 {

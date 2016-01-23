@@ -40,6 +40,7 @@ using std::cout;
 // Own Includes (Peter)
 #include "Point.h"
 #include "Box.h"
+#include "Spring.h"
 #include "collisionDetect.h"
 #include <math.h> // for PI
 
@@ -99,6 +100,12 @@ bool  g_bDrawSpheres = true;
 // self added variables
 bool	g_bDrawBoxes = true;
 bool	g_bApplyGravity = false;
+// Exercise 1--------------
+bool	g_bMidpoint = true;	// if false: then Euler
+bool	g_bDrawSprings = true;
+bool	g_bDrawPoints = true;
+float 	g_fDamping = 4.0f;
+//-------------------------
 float	h_timeStep = 0.1f;
 float	g_fGravity = -9.18f;
 float	g_fMass = 2.0f;
@@ -111,6 +118,8 @@ float	g_fTimeSpeedUp = 1.0f;
 // Physics objects
 
 std::vector<Box*> boxes;
+std::vector<Point*> points;
+std::vector<Spring*> springs;
 
 // added functions
 
@@ -122,6 +131,8 @@ void PhysicValuesInit();
 void printVector(XMVECTOR vec);
 void RigidCollInit();
 void Demo_4_Init();
+void Demo_5_Init();
+void deleteAllObjects();
 
 
 
@@ -134,7 +145,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     g_pTweakBar = TwNewBar("TweakBar");
 	TwDefine(" TweakBar color='0 128 128' alpha=128 ");
 
-	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4");
+	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4,Demo5");
 	TwAddVarRW(g_pTweakBar, "Test Scene", TW_TYPE_TESTCASE, &g_iTestCase, "");
 	// HINT: For buttons you can directly pass the callback function as a lambda expression.
 	TwAddButton(g_pTweakBar, "Reset Scene", [](void *){g_iPreTestCase = -1; }, nullptr, "");
@@ -174,6 +185,13 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
 		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
 		break;
+	case 8:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
+		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
 	default:
 		break;
 	}
@@ -207,6 +225,50 @@ void DrawBoxes(ID3D11DeviceContext* pd3dImmediateContext)
 		}
 
 	}
+}
+
+// Draw Points for the Mass Spring System
+void drawPoints(ID3D11DeviceContext* pd3dImmediateContext)
+{
+	g_pEffectPositionNormal->SetEmissiveColor(Colors::Black);
+	g_pEffectPositionNormal->SetSpecularColor(0.4f * Colors::White);
+	g_pEffectPositionNormal->SetSpecularPower(100);
+
+	std::mt19937 eng;
+	std::uniform_real_distribution<float> randCol(0.0f, 1.0f);
+	std::uniform_real_distribution<float> randPos(-0.5f, 0.5f);
+
+	for (int i = 0; i < points.size(); i++)
+	{
+		g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(0, 0, 1, 0)));
+		XMMATRIX scale = XMMatrixScaling(0.11f, 0.11f, 0.11f);
+		XMMATRIX trans = XMMatrixTranslation(XMVectorGetByIndex(points[i]->position, 0), XMVectorGetByIndex(points[i]->position, 1), XMVectorGetByIndex(points[i]->position, 2));
+		g_pEffectPositionNormal->SetWorld(scale * trans * g_camera.GetWorldMatrix());
+
+		// draw
+		g_pSphere->Draw(g_pEffectPositionNormal, g_pInputLayoutPositionNormal);
+	}
+
+}
+
+// Draw Springs for the Mass Spring System
+void drawSprings(ID3D11DeviceContext* pd3dImmediateContext)
+{
+	g_pEffectPositionColor->SetWorld(g_camera.GetWorldMatrix());
+
+	g_pEffectPositionColor->Apply(pd3dImmediateContext);
+	pd3dImmediateContext->IASetInputLayout(g_pInputLayoutPositionColor);
+
+	// draw (similar as for the bounding box)
+	g_pPrimitiveBatchPositionColor->Begin();
+	for (int i = 0; i < springs.size(); i++)
+	{
+		g_pPrimitiveBatchPositionColor->DrawLine(
+			VertexPositionColor(springs[i]->point1->position, Colors::Green),
+			VertexPositionColor(springs[i]->point2->position, Colors::Green)
+			);
+	}
+	g_pPrimitiveBatchPositionColor->End();
 }
 
 // Draw the edges of the bounding box [-0.5;0.5]³ rotated with the cameras model tranformation.
@@ -681,38 +743,59 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 		case 0:
 			cout << "Basic Test!\n";
 			g_bDrawSpheres = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			g_iNumSpheres = 100;
 			g_fSphereSize = 0.05f;
 			break;
 		case 1:
 			cout << "Test1!\n";
-			g_bDrawTeapot = true;			
+			g_bDrawTeapot = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			g_vfMovableObjectPos = XMFLOAT3(0, 0, 0);
 			g_vfRotate = XMFLOAT3(0, 0, 0);
 			break;
 		case 2:
 			cout << "Test2!\n";
 			g_bDrawTriangle = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			break;
 		case 4:
 			cout << "Demo1\n";
 			g_bDrawBoxes = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			RigidBodyInit(4);
 			break;
 		case 5:
 			cout << "Demo2\n";
 			g_bDrawBoxes = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			RigidBodyInit(5);
 			break;
 		case 6:
 			cout << "Demo3\n";
 			g_bDrawBoxes = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			RigidCollInit();
 			break;
 		case 7:
 			cout << "Demo4\n";
 			g_bDrawBoxes = true;
+			g_bDrawPoints = false;
+			g_bDrawSprings = false;
 			Demo_4_Init();
+			break;
+		case 8:
+			cout << "Demo5\n";
+			g_bDrawBoxes = true;
+			g_bDrawPoints = true;
+			g_bDrawSprings = true;
+			Demo_5_Init();
 			break;
 		default:
 			cout << "Empty Test!\n";
@@ -765,6 +848,7 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 	case 5:
 	case 6:
 	case 7:
+	case 8:
 		time_counter += fElapsedTime;
 		if (time_counter > (h_timeStep/g_fTimeSpeedUp))
 		{
@@ -825,6 +909,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 	case 5:
 	case 6:
 	case 7:
+	case 8:
 		// Draw a box
 		if (g_bDrawBoxes)	{
 			DrawBoxes(pd3dImmediateContext);
@@ -835,6 +920,19 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 					", " << XMVectorGetByIndex(box->position, 2) << "\n";
 			}*/
 		}
+
+		// Draw a Point
+		if (g_bDrawPoints)	
+		{
+			drawPoints(pd3dImmediateContext);
+		}
+
+		// Draw a Spring
+		if (g_bDrawSprings)
+		{
+			drawSprings(pd3dImmediateContext);
+		}
+
 		break;
 	default:
 		break;
@@ -862,8 +960,123 @@ Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMV
 	return b;
 }
 
+Point* addPoint(float x, float y, float z, bool fixed) 
+{
+	Point* p = new Point(XMVectorSet(x, y, z, 0.f), fixed);
+	points.push_back(p);
+
+	return p;
+}
+
+Spring* addSpring(Point* a, Point* b, float stiffness)
+{
+	Spring* s = new Spring(a, b, stiffness);
+	springs.push_back(s);
+
+	return s;
+}
+
+Spring* addSpring(Point* a, Point* b, float org_length, float stiffness)
+{
+	Spring* s = new Spring(a, b, org_length, stiffness);
+	springs.push_back(s);
+
+	return s;
+}
+
 void nextStep(float timeStep)
 {
+	// From Exercise 1
+	for each (auto point in points)
+	{
+		point->clearForces();
+	}
+
+	if (g_bMidpoint)
+	{
+		// (steps on slide 71 of mass-spring slides)
+		float half_timestep = timeStep / 2.f;
+
+		for each (auto point in points)
+		{
+			if (point->fixed){ continue; }
+
+			point->xtmp = XMVectorAdd(point->position, XMVectorScale(point->velocity, half_timestep));	// Step 2
+
+		}
+
+		for each (auto spring in springs)
+		{
+			// Step 3
+			spring->computeSpringForces();
+
+			if (g_iTestCase != 4)	// Don't apply damping for basic calculation in Demo1
+			{
+				spring->addDamping();
+			}
+		}
+
+		for each (auto point in points)
+		{
+			if (point->fixed){ continue; }
+
+			// Step 4
+			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
+			point->vtmp = point->velocity + half_timestep * (totalForce / point->mass);
+
+			point->position += timeStep * point->vtmp;	// Step 5
+		}
+
+		for each (auto spring in springs)
+		{
+			// Step 6
+			spring->computeSpringForcesTMP();
+
+			if (g_iTestCase != 4)	// Don't apply damping for basic calculation in Demo1
+			{
+				spring->addDampingTMP();
+			}
+		}
+
+		for each(auto point in points)
+		{
+			if (point->fixed) { continue; }
+
+			// Step 7
+
+			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
+			point->velocity += half_timestep * (totalForce / point->mass);
+		}
+
+	}
+	else 
+	{
+		// doing Euler here
+		for each (auto spring in springs)
+		{
+			spring->computeSpringForces();
+
+			if (g_iTestCase != 4)	// Don't apply damping for basic calculation in Demo1
+			{
+				spring->addDamping();
+			}
+		}
+		for each (auto point in points)
+		{
+			if (point->fixed){ continue; }
+
+			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
+
+			point->position += XMVectorScale(point->velocity, timeStep);
+			point->velocity += XMVectorScale(totalForce, timeStep / point->mass);
+		}
+	}
+
+
+	// From Exercise 2
 	// compare with slide 14 of "lecture06_rb3d"
 	for each(auto box in boxes)
 	{
@@ -940,12 +1153,7 @@ void nextStep(float timeStep)
 
 void RigidBodyInit(int mode)
 {
-	for each (auto box in boxes)
-	{
-		delete box;
-	}
-
-	boxes.clear();
+	deleteAllObjects();
 
 	Box* boxA;
 	XMVECTOR boxA_cm_pos;
@@ -987,12 +1195,7 @@ void RigidBodyInit(int mode)
 // for Demo3 a collision
 void RigidCollInit() 
 {
-	for each (auto box in boxes)
-	{
-		delete box;
-	}
-
-	boxes.clear();
+	deleteAllObjects();
 
 	h_timeStep = 0.1f;
 	g_bApplyGravity = false;
@@ -1008,12 +1211,7 @@ void RigidCollInit()
 
 void Demo_4_Init()
 {
-	for each (auto box in boxes)
-	{
-		delete box;
-	}
-
-	boxes.clear();
+	deleteAllObjects();
 
 	h_timeStep = 0.1f;
 	g_bApplyGravity = false;
@@ -1033,10 +1231,53 @@ void Demo_4_Init()
 	boxC->addTorque(XMVectorSet(0.3f, 0.2f, 0.4f, 0.f), boxA->position + XMVectorSet(0.2f, 0.2f, 0.2f, 0.0f));
 }
 
+void Demo_5_Init()
+{
+	deleteAllObjects();
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+	Box* boxA;
+	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0., 0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
+	boxA->addVelocity(0.5f, 0.1f, 0.3f);
+	boxA->addTorque(XMVectorSet(2.0f, 0.3f, 0.f, 0.f), boxA->position + XMVectorSet(0.2f, 0.2f, 0.2f, 0.0f));
+
+	Point* p0 = addPoint(0.f, 0.f, 0.f, false);
+	Point* p1 = addPoint(0.f, 2.f, 0.f, false);
+
+	p0->velocity = XMVectorSet(-1.f, 0.f, 0.f, 0.f);
+	p1->velocity = XMVectorSet(1.f, 0.f, 0.f, 0.f);
+
+
+	Spring* s0 = addSpring(p0, p1, 1, 40);
+}
+
+void deleteAllObjects()
+{
+	for each (auto box in boxes)
+	{
+		delete box;
+	}
+
+	for each (auto spring in springs)
+	{
+		delete spring;
+	}
+
+	for each (auto point in points)
+	{
+		delete point;
+	}
+
+	boxes.clear();
+	springs.clear();
+	points.clear();
+}
+
 void PhysicValuesInit()
 {
 	Point::f_Mass = &g_fMass;
 	Point::f_Gravity = &g_fGravity;
+	Spring::damping = &g_fDamping;
 }
 
 void printVector(XMVECTOR vec) 
