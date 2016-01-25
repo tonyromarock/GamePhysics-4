@@ -11,6 +11,7 @@ Point::Point(XMVECTOR position, bool fixed) :fixed(fixed)
 	ext_F = XMVectorSet(0.f, 0.f, 0.f, 0.f);
 	xtmp = XMVectorSet(XMVectorGetByIndex(position, 0), XMVectorGetByIndex(position, 1), XMVectorGetByIndex(position, 2), 0.f);
 	vtmp = XMVectorSet(0.f, 0.f, 0.f, 0.f);
+	velocity = XMVECTOR();
 }
 
 Point::~Point(){}

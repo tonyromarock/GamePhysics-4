@@ -2,7 +2,7 @@
 
 Box::Box(float x, float y, float z, XMVECTOR position, float mass, bool fixed, XMVECTOR orientation)
 {
-	this->position = position;
+	this->position = position;	// its the center position of the box
 	this->velocity = XMVectorSet(0.f, 0.f, 0.f, 0.f);
 	length = XMVectorSet(x, y, z, 0.f);
 	

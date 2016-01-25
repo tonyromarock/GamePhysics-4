@@ -132,6 +132,7 @@ void printVector(XMVECTOR vec);
 void RigidCollInit();
 void Demo_4_Init();
 void Demo_5_Init();
+void Demo_6_Init();
 void deleteAllObjects();
 
 
@@ -145,7 +146,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     g_pTweakBar = TwNewBar("TweakBar");
 	TwDefine(" TweakBar color='0 128 128' alpha=128 ");
 
-	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4,Demo5");
+	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4,Demo5,Demo6");
 	TwAddVarRW(g_pTweakBar, "Test Scene", TW_TYPE_TESTCASE, &g_iTestCase, "");
 	// HINT: For buttons you can directly pass the callback function as a lambda expression.
 	TwAddButton(g_pTweakBar, "Reset Scene", [](void *){g_iPreTestCase = -1; }, nullptr, "");
@@ -192,6 +193,15 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
 		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
 		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		break;
+	case 9:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
+		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		break;
 	default:
 		break;
 	}
@@ -240,7 +250,7 @@ void drawPoints(ID3D11DeviceContext* pd3dImmediateContext)
 
 	for (int i = 0; i < points.size(); i++)
 	{
-		g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(0, 0, 1, 0)));
+		g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(randCol(eng), 1, 1, 0)));
 		XMMATRIX scale = XMMatrixScaling(0.11f, 0.11f, 0.11f);
 		XMMATRIX trans = XMMatrixTranslation(XMVectorGetByIndex(points[i]->position, 0), XMVectorGetByIndex(points[i]->position, 1), XMVectorGetByIndex(points[i]->position, 2));
 		g_pEffectPositionNormal->SetWorld(scale * trans * g_camera.GetWorldMatrix());
@@ -797,6 +807,13 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 			g_bDrawSprings = true;
 			Demo_5_Init();
 			break;
+		case 9: 
+			cout << "Demo6\n";
+			g_bDrawBoxes = true;
+			g_bDrawPoints = true;
+			g_bDrawSprings = true;
+			Demo_6_Init();
+			break;
 		default:
 			cout << "Empty Test!\n";
 			break;
@@ -849,6 +866,7 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 	case 6:
 	case 7:
 	case 8:
+	case 9:
 		time_counter += fElapsedTime;
 		if (time_counter > (h_timeStep/g_fTimeSpeedUp))
 		{
@@ -910,6 +928,7 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 	case 6:
 	case 7:
 	case 8:
+	case 9:
 		// Draw a box
 		if (g_bDrawBoxes)	{
 			DrawBoxes(pd3dImmediateContext);
@@ -1115,12 +1134,32 @@ void nextStep(float timeStep)
 		{
 			if (box1 == box2) { continue; }
 
-			CollisionInfo info = checkCollision(XMMatrixRotationQuaternion(box1->orientation) * box1->transform,
-				XMMatrixRotationQuaternion(box2->orientation)* box2->transform);
+			XMMATRIX box1M = XMMatrixTranslationFromVector(box1->position);
+			XMMATRIX box2M = XMMatrixTranslationFromVector(box2->position);
+			box1M = XMMatrixRotationQuaternion(box1->orientation) * box1M;
+			box2M = XMMatrixRotationQuaternion(box2->orientation) * box2M;
+			box1M = XMMatrixScalingFromVector(box1->length) * box1M;
+			box2M = XMMatrixScalingFromVector(box1->length) * box2M;
+
+			cout << "Translation\n";
+			printVector(box1->position);
+			printVector(box2->position);
+			cout << "Rotation:\n";
+			printVector(box1->orientation);
+			printVector(box2->orientation);
+			cout << "Scaling:\n";
+			printVector(box1->length);
+			printVector(box2->length);
+
+			CollisionInfo info = checkCollision(
+				box1M,
+				box2M
+				);
 
 			if (info.isValid) 
 			{
-				if (XMVectorGetByIndex(XMVector3Dot(box1->velocity - box2->velocity, -info.normalWorld), 0) > 0){ continue; }
+
+				if (XMVectorGetByIndex(XMVector3Dot(box1->velocity - box2->velocity, -info.normalWorld), 0) < 0){ continue; }
 
 				// top and bottom half of the fraction
 				float j_up = 0.f;
@@ -1217,7 +1256,7 @@ void Demo_4_Init()
 	g_bApplyGravity = false;
 	Box* boxA; Box* boxB; Box* boxC; Box* boxD;
 
-	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0., 0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
+	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f, 0.f, 0.f, 0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
 	boxB = addBox(1.f, 1.6f, 0.7f, XMVectorSet(7.0f, 0.f, 0.f, 0.f), 2.f, false, XMVectorSet(M_PI / 3.f, M_PI / 3.0f, M_PI_2, 0.f));
 	boxC = addBox(0.6f, 0.6f, 0.6f, XMVectorSet(2.0f, 5.0f, 0.2f, 0.f), 2.f, false, XMVectorSet(0.f, 0.f, M_PI / 3.0f, 0.f));
 	boxD = addBox(1.5f, 0.2f, 0.2f, XMVectorSet(0.f, 5.0f, 5.0f, 0.f), 2.f, false, XMVectorSet(0.f, M_PI / 3.0f, 0.f, 0.f));
@@ -1249,6 +1288,50 @@ void Demo_5_Init()
 
 
 	Spring* s0 = addSpring(p0, p1, 1, 40);
+}
+
+void Demo_6_Init()
+{
+	deleteAllObjects();
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+
+	// point for first layer
+	Point* p0 = addPoint(0.f, 0.f, 0.f, false);
+	Point* p1 = addPoint(4.f, 0.f, 0.f, false);
+	Point* p2 = addPoint(0.f, 0.f, 4.f, false);
+	Point* p3 = addPoint(4.f, 0.f, 4.f, false);
+	// point for the second layer
+	Point* p4 = addPoint(0.f, 4.f, 0.f, false);
+	Point* p5 = addPoint(4.f, 4.f, 0.f, false);
+	Point* p6 = addPoint(0.f, 4.f, 4.f, false);
+	Point* p7 = addPoint(4.f, 4.f, 4.f, false);
+
+	// springs first layer
+	Spring* s0 = addSpring(p0, p1, 40.f);
+	Spring* s1 = addSpring(p0, p2, 40.f);
+	Spring* s2 = addSpring(p1, p3, 40.f);
+	Spring* s3 = addSpring(p2, p3, 40.f);
+	Spring* s4 = addSpring(p2, p1, 40.f);	// diagonal
+	// springs second (/back) layer
+	Spring* s5 = addSpring(p4, p5, 40.f);
+	Spring* s6 = addSpring(p4, p6, 40.f);
+	Spring* s7 = addSpring(p5, p7, 40.f);
+	Spring* s8 = addSpring(p6, p7, 40.f);
+	Spring* s9 = addSpring(p6, p5, 40.f);	// diagonal
+
+	// springs inbetween 
+	Spring* s10 = addSpring(p3, p5, 40.f);	// diagonal
+	Spring* s11 = addSpring(p2, p4, 40.f);	// diagonal
+	Spring* s12 = addSpring(p2, p7, 40.f);	// diagonal
+	Spring* s13 = addSpring(p0, p5, 40.f);	// diagonal
+
+	Spring* s14 = addSpring(p2, p6, 40.f);	
+	Spring* s15 = addSpring(p3, p7, 40.f);	
+	Spring* s16 = addSpring(p0, p4, 40.f);	
+	Spring* s17 = addSpring(p1, p5, 40.f);	
+
+
 }
 
 void deleteAllObjects()
