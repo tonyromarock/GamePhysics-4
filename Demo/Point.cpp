@@ -3,6 +3,17 @@
 float* Point::f_Mass = nullptr;
 float* Point::f_Gravity = nullptr;
 
+Point::Point() 
+{
+	this->position = XMVECTOR();
+	mass = *f_Mass;
+	int_F = XMVECTOR();
+	ext_F = XMVECTOR();
+	xtmp = XMVECTOR();
+	vtmp = XMVECTOR();
+	velocity = XMVECTOR();
+}
+
 Point::Point(XMVECTOR position, bool fixed) :fixed(fixed)
 {
 	this->position = XMVectorSet(XMVectorGetByIndex(position, 0), XMVectorGetByIndex(position, 1), XMVectorGetByIndex(position, 2), 0.f);

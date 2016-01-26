@@ -12,6 +12,7 @@
     <ClCompile Include="RigidBody.cpp" />
     <ClCompile Include="Box.cpp" />
     <ClCompile Include="Spring.cpp" />
+    <ClCompile Include="SpringBox.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="util">
@@ -29,6 +30,7 @@
     <ClInclude Include="Point.h" />
     <ClInclude Include="Box.h" />
     <ClInclude Include="Spring.h" />
+    <ClInclude Include="SpringBox.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="effect.fx" />

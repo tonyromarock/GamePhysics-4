@@ -43,6 +43,7 @@ using std::cout;
 #include "Spring.h"
 #include "collisionDetect.h"
 #include <math.h> // for PI
+#include "SpringBox.h"
 
 #define TEMPLATE_DEMO
 //#define MASS_SPRING_SYSTEM
@@ -120,12 +121,14 @@ float	g_fTimeSpeedUp = 1.0f;
 std::vector<Box*> boxes;
 std::vector<Point*> points;
 std::vector<Spring*> springs;
+std::vector<SpringBox*> springboxes;
 
 // added functions
 
 void DrawBoxes(ID3D11DeviceContext* pd3dImmediateContext);
 void nextStep(float timeStep);
 Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation);
+SpringBox* addSpringBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation, float stiffness);
 void RigidBodyInit(int mode);
 void PhysicValuesInit();
 void printVector(XMVECTOR vec);
@@ -979,6 +982,21 @@ Box* addBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMV
 	return b;
 }
 
+SpringBox* addSpringBox(float x, float y, float z, XMVECTOR pos, float mass, bool fixed, XMVECTOR orientation, float stiffness) 
+{
+	SpringBox* sb = new SpringBox(x, y, z, pos, mass, fixed, orientation, stiffness);
+	springboxes.push_back(sb);
+	for (int i = 0; i < sb->corners.size(); i++) 
+	{
+		points.push_back((sb->corners[i]));
+	}
+	for (int i = 0; i < sb->edges.size(); i++) 
+	{
+		springs.push_back((sb->edges[i]));
+	}
+	return sb;
+}
+
 Point* addPoint(float x, float y, float z, bool fixed) 
 {
 	Point* p = new Point(XMVectorSet(x, y, z, 0.f), fixed);
@@ -1040,7 +1058,9 @@ void nextStep(float timeStep)
 			if (point->fixed){ continue; }
 
 			// Step 4
-			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			if ((g_iTestCase == 7 || g_iTestCase == 9) && g_bApplyGravity) {
+				point->addGravity(timeStep); 
+			}
 			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
 			point->vtmp = point->velocity + half_timestep * (totalForce / point->mass);
 
@@ -1064,11 +1084,12 @@ void nextStep(float timeStep)
 
 			// Step 7
 
-			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			if ((g_iTestCase == 7 || g_iTestCase == 9) && g_bApplyGravity) {
+				point->addGravity(timeStep);
+			}
 			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
 			point->velocity += half_timestep * (totalForce / point->mass);
 		}
-
 	}
 	else 
 	{
@@ -1086,11 +1107,25 @@ void nextStep(float timeStep)
 		{
 			if (point->fixed){ continue; }
 
-			if (g_iTestCase == 7) { point->addGravity(timeStep); }
+			if ((g_iTestCase == 7 || g_iTestCase == 9) && g_bApplyGravity) { 
+				point->addGravity(timeStep); 
+			}
 			XMVECTOR totalForce = XMVectorAdd(point->ext_F, point->int_F);
 
 			point->position += XMVectorScale(point->velocity, timeStep);
 			point->velocity += XMVectorScale(totalForce, timeStep / point->mass);
+		}
+	}
+
+	// Position correction if z < 0
+	for each(auto point in points)
+	{
+		if (point->fixed){ continue; }
+
+		if (XMVectorGetByIndex(point->position, 1) < -1)
+		{
+			point->position.m128_f32[1] = -1;
+			point->xtmp.m128_f32[1] = -1;
 		}
 	}
 
@@ -1100,7 +1135,7 @@ void nextStep(float timeStep)
 	for each(auto box in boxes)
 	{
 		if (box->centerOfMass.fixed) { continue; }
-		if ((g_iTestCase == 5 || g_iTestCase == 7) && g_bApplyGravity)
+		if ((g_iTestCase == 5 || g_iTestCase == 7 || g_iTestCase == 9) && g_bApplyGravity)
 		{
 			box->centerOfMass.addGravity(timeStep);
 			box->torqueAccumulator += box->centerOfMass.getTotalForce();
@@ -1296,46 +1331,50 @@ void Demo_6_Init()
 	h_timeStep = 0.1f;
 	g_bApplyGravity = false;
 
-	// point for first layer
-	Point* p0 = addPoint(0.f, 0.f, 0.f, false);
-	Point* p1 = addPoint(4.f, 0.f, 0.f, false);
-	Point* p2 = addPoint(0.f, 0.f, 4.f, false);
-	Point* p3 = addPoint(4.f, 0.f, 4.f, false);
-	// point for the second layer
-	Point* p4 = addPoint(0.f, 4.f, 0.f, false);
-	Point* p5 = addPoint(4.f, 4.f, 0.f, false);
-	Point* p6 = addPoint(0.f, 4.f, 4.f, false);
-	Point* p7 = addPoint(4.f, 4.f, 4.f, false);
+	float stiffness = 40.f;
+	SpringBox* sb = addSpringBox(4.f, 4.f, 4.f, XMVectorSet(2.f, 2.f, 2.f, 0.f), 10, false, XMVECTOR(), stiffness);
 
-	// springs first layer
-	Spring* s0 = addSpring(p0, p1, 40.f);
-	Spring* s1 = addSpring(p0, p2, 40.f);
-	Spring* s2 = addSpring(p1, p3, 40.f);
-	Spring* s3 = addSpring(p2, p3, 40.f);
-	Spring* s4 = addSpring(p2, p1, 40.f);	// diagonal
-	// springs second (/back) layer
-	Spring* s5 = addSpring(p4, p5, 40.f);
-	Spring* s6 = addSpring(p4, p6, 40.f);
-	Spring* s7 = addSpring(p5, p7, 40.f);
-	Spring* s8 = addSpring(p6, p7, 40.f);
-	Spring* s9 = addSpring(p6, p5, 40.f);	// diagonal
+	//// point for first layer
+	//Point* p0 = addPoint(0.f, 0.f, 0.f, false);
+	//Point* p1 = addPoint(4.f, 0.f, 0.f, false);
+	//Point* p2 = addPoint(0.f, 0.f, 4.f, false);
+	//Point* p3 = addPoint(4.f, 0.f, 4.f, false);
+	//// point for the second layer
+	//Point* p4 = addPoint(0.f, 4.f, 0.f, false);
+	//Point* p5 = addPoint(4.f, 4.f, 0.f, false);
+	//Point* p6 = addPoint(0.f, 4.f, 4.f, false);
+	//Point* p7 = addPoint(4.f, 4.f, 4.f, false);
 
-	// springs inbetween 
-	Spring* s10 = addSpring(p3, p5, 40.f);	// diagonal
-	Spring* s11 = addSpring(p2, p4, 40.f);	// diagonal
-	Spring* s12 = addSpring(p2, p7, 40.f);	// diagonal
-	Spring* s13 = addSpring(p0, p5, 40.f);	// diagonal
+	//// springs first layer
+	//Spring* s0 = addSpring(p0, p1, 40.f);
+	//Spring* s1 = addSpring(p0, p2, 40.f);
+	//Spring* s2 = addSpring(p1, p3, 40.f);
+	//Spring* s3 = addSpring(p2, p3, 40.f);
+	//Spring* s4 = addSpring(p2, p1, 40.f);	// diagonal
+	//// springs second (/back) layer
+	//Spring* s5 = addSpring(p4, p5, 40.f);
+	//Spring* s6 = addSpring(p4, p6, 40.f);
+	//Spring* s7 = addSpring(p5, p7, 40.f);
+	//Spring* s8 = addSpring(p6, p7, 40.f);
+	//Spring* s9 = addSpring(p6, p5, 40.f);	// diagonal
 
-	Spring* s14 = addSpring(p2, p6, 40.f);	
-	Spring* s15 = addSpring(p3, p7, 40.f);	
-	Spring* s16 = addSpring(p0, p4, 40.f);	
-	Spring* s17 = addSpring(p1, p5, 40.f);	
+	//// springs inbetween 
+	//Spring* s10 = addSpring(p3, p5, 40.f);	// diagonal
+	//Spring* s11 = addSpring(p2, p4, 40.f);	// diagonal
+	//Spring* s12 = addSpring(p2, p7, 40.f);	// diagonal
+	//Spring* s13 = addSpring(p0, p5, 40.f);	// diagonal
+
+	//Spring* s14 = addSpring(p2, p6, 40.f);	
+	//Spring* s15 = addSpring(p3, p7, 40.f);	
+	//Spring* s16 = addSpring(p0, p4, 40.f);	
+	//Spring* s17 = addSpring(p1, p5, 40.f);	
 
 
 }
 
 void deleteAllObjects()
 {
+	
 	for each (auto box in boxes)
 	{
 		delete box;
@@ -1351,9 +1390,15 @@ void deleteAllObjects()
 		delete point;
 	}
 
+	for each (auto sb in springboxes)
+	{
+		delete sb;
+	}
+
 	boxes.clear();
 	springs.clear();
 	points.clear();
+	springboxes.clear();
 }
 
 void PhysicValuesInit()

@@ -15,6 +15,7 @@ public:
 	static float* damping;	
 	XMVECTOR forces;
 
+	Spring();
 	Spring(Point* point1, Point* point2, float stiffness);
 	Spring(Point* point1, Point* point2, float o_length, float stiffness);
 	~Spring();

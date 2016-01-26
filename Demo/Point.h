@@ -21,6 +21,7 @@ public:
 	XMVECTOR xtmp;
 	XMVECTOR vtmp;
 
+	Point();
 	Point(XMVECTOR position, bool fixed);
 	~Point();
 	void clearForces();
