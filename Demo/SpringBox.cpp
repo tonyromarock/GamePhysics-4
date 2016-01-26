@@ -68,4 +68,6 @@ SpringBox::SpringBox(float x, float y, float z, XMVECTOR position, float mass, b
 
 SpringBox::~SpringBox()
 {
+	corners.clear();
+	edges.clear();
 }
