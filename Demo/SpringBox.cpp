@@ -4,9 +4,9 @@ SpringBox::SpringBox(float x, float y, float z, XMVECTOR position, float mass, b
 {
 	this->position = position;	// its the center position of the box
 	this->velocity = XMVectorSet(0.f, 0.f, 0.f, 0.f);
-	length = XMVectorSet(x, y, z, 0.f);
+	this->length = XMVectorSet(x, y, z, 0.f);
 
-	centerOfMass = Point(position, false);
+	centerOfMass = Point();
 
 	this->transform = XMMatrixTranslationFromVector(this->position);
 	this->centerOfMass.fixed = fixed;
@@ -39,14 +39,14 @@ SpringBox::SpringBox(float x, float y, float z, XMVECTOR position, float mass, b
 	this->angularVelocity = XMVECTOR();
 	this->torqueAccumulator = XMVECTOR();
 
-	corners.push_back(new Point(-xLength - yLength - zLength, fixed));
-	corners.push_back(new Point(xLength - yLength - zLength, fixed));
-	corners.push_back(new Point(-xLength + yLength - zLength, fixed));
-	corners.push_back(new Point(xLength + yLength - zLength, fixed));
-	corners.push_back(new Point(-xLength - yLength + zLength, fixed));
-	corners.push_back(new Point(xLength - yLength + zLength, fixed));
-	corners.push_back(new Point(-xLength + yLength + zLength, fixed));
-	corners.push_back(new Point(xLength + yLength + zLength, fixed));
+	corners.push_back(new Point(position - xLength - yLength - zLength, fixed));
+	corners.push_back(new Point(position + xLength - yLength - zLength, fixed));
+	corners.push_back(new Point(position - xLength + yLength - zLength, fixed));
+	corners.push_back(new Point(position + xLength + yLength - zLength, fixed));
+	corners.push_back(new Point(position - xLength - yLength + zLength, fixed));
+	corners.push_back(new Point(position + xLength - yLength + zLength, fixed));
+	corners.push_back(new Point(position - xLength + yLength + zLength, fixed));
+	corners.push_back(new Point(position + xLength + yLength + zLength, fixed));
 
 	// front side
 	edges.push_back(new Spring(corners[0], corners[1], stiffness));
@@ -63,6 +63,19 @@ SpringBox::SpringBox(float x, float y, float z, XMVECTOR position, float mass, b
 	edges.push_back(new Spring(corners[3], corners[7], stiffness));
 	edges.push_back(new Spring(corners[2], corners[6], stiffness));
 	edges.push_back(new Spring(corners[0], corners[4], stiffness));
+
+	// middle point
+	corners.push_back(new Point(position, fixed));
+	// connecting springs to the middle point
+	edges.push_back(new Spring(corners[0], corners[8], stiffness));
+	edges.push_back(new Spring(corners[1], corners[8], stiffness));
+	edges.push_back(new Spring(corners[2], corners[8], stiffness));
+	edges.push_back(new Spring(corners[3], corners[8], stiffness)); 
+	edges.push_back(new Spring(corners[4], corners[8], stiffness));
+	edges.push_back(new Spring(corners[5], corners[8], stiffness));
+	edges.push_back(new Spring(corners[6], corners[8], stiffness));
+	edges.push_back(new Spring(corners[7], corners[8], stiffness));
+
 
 }
 

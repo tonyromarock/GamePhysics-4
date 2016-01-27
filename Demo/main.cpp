@@ -195,7 +195,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
 		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
 		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
-		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		TwAddVarRW(g_pTweakBar, "Damping", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
 		break;
 	case 9:
 		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
@@ -203,7 +203,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
 		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
 		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
-		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		TwAddVarRW(g_pTweakBar, "Damping", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
 		break;
 	default:
 		break;
@@ -990,6 +990,7 @@ SpringBox* addSpringBox(float x, float y, float z, XMVECTOR pos, float mass, boo
 	{
 		points.push_back((sb->corners[i]));
 	}
+
 	for (int i = 0; i < sb->edges.size(); i++) 
 	{
 		springs.push_back((sb->edges[i]));
@@ -1117,7 +1118,7 @@ void nextStep(float timeStep)
 		}
 	}
 
-	// Position correction if z < 0
+	// Position correction if y < -1
 	for each(auto point in points)
 	{
 		if (point->fixed){ continue; }
@@ -1174,7 +1175,7 @@ void nextStep(float timeStep)
 			box1M = XMMatrixRotationQuaternion(box1->orientation) * box1M;
 			box2M = XMMatrixRotationQuaternion(box2->orientation) * box2M;
 			box1M = XMMatrixScalingFromVector(box1->length) * box1M;
-			box2M = XMMatrixScalingFromVector(box1->length) * box2M;
+			box2M = XMMatrixScalingFromVector(box2->length) * box2M;
 
 			cout << "Translation\n";
 			printVector(box1->position);
@@ -1220,6 +1221,104 @@ void nextStep(float timeStep)
 
 			}
 
+
+		}
+	}
+
+
+	// Exercise 4
+	// add Torque calculations to SpringBoxes
+	for each(auto sb in springboxes)
+	{
+		if (sb->centerOfMass.fixed) { continue; }
+		if ((g_iTestCase == 5 || g_iTestCase == 7 || g_iTestCase == 9) && g_bApplyGravity)
+		{
+			sb->centerOfMass.addGravity(timeStep);
+			sb->torqueAccumulator += sb->centerOfMass.getTotalForce();
+		}
+
+
+		// Euler step
+		sb->position += sb->velocity * timeStep;
+		for (int i = 0; i < sb->corners.size(); ++i) 
+		{
+			sb->corners[i]->position += sb->velocity * timeStep;
+		}
+		sb->transform = XMMatrixTranslationFromVector(sb->position);
+		sb->velocity += (sb->torqueAccumulator / sb->centerOfMass.mass) * timeStep;
+
+		// Quaternion
+		sb->orientation = XMQuaternionNormalize(sb->orientation +
+			XMQuaternionMultiply((timeStep / 2.0f) * XMVectorSetW(sb->angularVelocity, 0.0f), sb->orientation));
+
+		sb->angularMomentum += sb->torqueAccumulator * timeStep;
+
+		XMMATRIX rotation = XMMatrixRotationQuaternion(sb->orientation);
+		XMMATRIX inertiaTensorInverse = rotation * sb->intertiaTensorInverse * XMMatrixTranspose(rotation);
+
+		sb->angularVelocity = XMVector3Transform(sb->angularMomentum, inertiaTensorInverse);
+
+		sb->clearTorque();
+		sb->centerOfMass.clearForces();
+
+	}
+
+	// Exercise 4 coupling
+	// collision detection and handling for SpringBoxes and RigidBodies
+	for each (auto box in boxes) 
+	{
+		for each(auto springbox in springboxes) 
+		{
+			XMMATRIX boxM = XMMatrixTranslationFromVector(box->position);
+			XMMATRIX spr_boxM = XMMatrixTranslationFromVector(springbox->position);
+			boxM = XMMatrixRotationQuaternion(box->orientation) * boxM;
+			spr_boxM = XMMatrixRotationQuaternion(springbox->orientation) * spr_boxM;
+			boxM = XMMatrixScalingFromVector(box->length) * boxM;
+			spr_boxM = XMMatrixScalingFromVector(springbox->length) * spr_boxM;
+
+			CollisionInfo info = checkCollision(
+				boxM,
+				spr_boxM
+				);
+
+			CollisionInfo info2 = checkCollision(
+				spr_boxM,
+				boxM
+				);
+
+			if (info.isValid || info2.isValid)
+			{
+
+				if (info2.isValid) 
+				{ 
+					info = info2;
+				}
+
+				if (XMVectorGetByIndex(XMVector3Dot(box->velocity - springbox->velocity, -info.normalWorld), 0) > 0){ continue; }
+
+				// top and bottom half of the fraction
+				float j_up = 0.f;
+				float j_down = 0.f;
+
+				j_up = -(1.0f + g_fCConst) * XMVectorGetByIndex(XMVector3Dot(box->velocity - springbox->velocity, -info.normalWorld), 0);
+				j_down =
+					box->massInverse +
+					springbox->massInverse +
+					XMVectorGetByIndex(XMVector3Dot(
+					XMVector3Cross(XMVector3Transform(XMVector3Cross(box->position, info.normalWorld), box->intertiaTensorInverse), box->position)
+					+ XMVector3Cross(XMVector3Transform(XMVector3Cross(springbox->position, info.normalWorld), springbox->intertiaTensorInverse), springbox->position)
+					, info.normalWorld
+					), 0);
+
+				float j = j_up / j_down;
+
+				box->velocity = box->velocity - (j * info.normalWorld * box->massInverse);
+				springbox->velocity = springbox->velocity + (j * info.normalWorld * springbox->massInverse);
+
+				box->angularMomentum = box->angularMomentum - XMVector3Cross(box->position, (j * info.normalWorld));
+				springbox->angularMomentum = springbox->angularMomentum + XMVector3Cross(springbox->position, (j * info.normalWorld));
+
+			}
 
 		}
 	}
@@ -1278,7 +1377,7 @@ void RigidCollInit()
 	boxA = addBox(1.f, 0.6f, 0.5f, XMVectorSet(0.f,0.f,0.,0.f), 2.f, false, XMVectorSet(0.f, 0.f, 0.f, 0.f));
 	boxB = addBox(1.f, 0.6f, 0.5f, XMVectorSet(7.0f, 0.f, 0.f, 0.f), 2.f, false, XMVectorSet(M_PI/3.f,M_PI / 3.0f, M_PI_2, 0.f));
 
-	boxA->addVelocity(0.5f, 0.f, 0.f);
+	//boxA->addVelocity(0.5f, 0.f, 0.f);
 	boxB->addVelocity(-2.0f, 0.f, 0.f);
 
 }
@@ -1325,6 +1424,7 @@ void Demo_5_Init()
 	Spring* s0 = addSpring(p0, p1, 1, 40);
 }
 
+// Demo 6
 void Demo_6_Init()
 {
 	deleteAllObjects();
@@ -1332,44 +1432,12 @@ void Demo_6_Init()
 	g_bApplyGravity = false;
 
 	float stiffness = 40.f;
-	SpringBox* sb = addSpringBox(4.f, 4.f, 4.f, XMVectorSet(2.f, 2.f, 2.f, 0.f), 10, false, XMVECTOR(), stiffness);
+	SpringBox* sb = addSpringBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
+	//Box* box2 = addBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR());
+	sb->addVelocity(0.5f, 0.f, 0.f);
 
-	//// point for first layer
-	//Point* p0 = addPoint(0.f, 0.f, 0.f, false);
-	//Point* p1 = addPoint(4.f, 0.f, 0.f, false);
-	//Point* p2 = addPoint(0.f, 0.f, 4.f, false);
-	//Point* p3 = addPoint(4.f, 0.f, 4.f, false);
-	//// point for the second layer
-	//Point* p4 = addPoint(0.f, 4.f, 0.f, false);
-	//Point* p5 = addPoint(4.f, 4.f, 0.f, false);
-	//Point* p6 = addPoint(0.f, 4.f, 4.f, false);
-	//Point* p7 = addPoint(4.f, 4.f, 4.f, false);
-
-	//// springs first layer
-	//Spring* s0 = addSpring(p0, p1, 40.f);
-	//Spring* s1 = addSpring(p0, p2, 40.f);
-	//Spring* s2 = addSpring(p1, p3, 40.f);
-	//Spring* s3 = addSpring(p2, p3, 40.f);
-	//Spring* s4 = addSpring(p2, p1, 40.f);	// diagonal
-	//// springs second (/back) layer
-	//Spring* s5 = addSpring(p4, p5, 40.f);
-	//Spring* s6 = addSpring(p4, p6, 40.f);
-	//Spring* s7 = addSpring(p5, p7, 40.f);
-	//Spring* s8 = addSpring(p6, p7, 40.f);
-	//Spring* s9 = addSpring(p6, p5, 40.f);	// diagonal
-
-	//// springs inbetween 
-	//Spring* s10 = addSpring(p3, p5, 40.f);	// diagonal
-	//Spring* s11 = addSpring(p2, p4, 40.f);	// diagonal
-	//Spring* s12 = addSpring(p2, p7, 40.f);	// diagonal
-	//Spring* s13 = addSpring(p0, p5, 40.f);	// diagonal
-
-	//Spring* s14 = addSpring(p2, p6, 40.f);	
-	//Spring* s15 = addSpring(p3, p7, 40.f);	
-	//Spring* s16 = addSpring(p0, p4, 40.f);	
-	//Spring* s17 = addSpring(p1, p5, 40.f);	
-
-
+	Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(3.0f, 0.5f, 0.f, 0.f), 4, false, XMVECTOR());
+	box1->addVelocity(-0.5f, 0.f, 0.f);
 }
 
 void deleteAllObjects()

@@ -6,7 +6,7 @@
 
 using namespace DirectX;
 
-class SpringBox : RigidBody
+class SpringBox : public RigidBody
 {
 public:
 
