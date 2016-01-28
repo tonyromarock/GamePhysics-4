@@ -137,6 +137,7 @@ void Demo_4_Init();
 void Demo_5_Init();
 void Demo_6_Init();
 void deleteAllObjects();
+float getDistance(XMVECTOR a, XMVECTOR b);
 
 
 
@@ -253,7 +254,7 @@ void drawPoints(ID3D11DeviceContext* pd3dImmediateContext)
 
 	for (int i = 0; i < points.size(); i++)
 	{
-		g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(randCol(eng), 1, 1, 0)));
+		g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(1, 1, 1, 0)));
 		XMMATRIX scale = XMMatrixScaling(0.11f, 0.11f, 0.11f);
 		XMMATRIX trans = XMMatrixTranslation(XMVectorGetByIndex(points[i]->position, 0), XMVectorGetByIndex(points[i]->position, 1), XMVectorGetByIndex(points[i]->position, 2));
 		g_pEffectPositionNormal->SetWorld(scale * trans * g_camera.GetWorldMatrix());
@@ -1312,16 +1313,47 @@ void nextStep(float timeStep)
 
 				float j = j_up / j_down;
 
-				box->velocity = box->velocity - (j * info.normalWorld * box->massInverse);
-				springbox->velocity = springbox->velocity + (j * info.normalWorld * springbox->massInverse);
+				box->velocity = box->velocity - (j * info.normalWorld * box->massInverse * 45.f); // a factor I had to add for the wanted behavior
+				springbox->velocity = springbox->velocity + (j * info.normalWorld * springbox->massInverse); 
 
 				box->angularMomentum = box->angularMomentum - XMVector3Cross(box->position, (j * info.normalWorld));
 				springbox->angularMomentum = springbox->angularMomentum + XMVector3Cross(springbox->position, (j * info.normalWorld));
 
-			}
+				// Make points feel a force from the collision
 
+				// find closest point to collision point
+				Point* closest = springbox->corners[0];
+				float closest_length = getDistance(closest->position, info.collisionPointWorld);
+
+				// only check the first 8 corners, since 9 is the centerOfMass
+				for (int i = 1; i < springbox->corners.size()-1; i++)
+				{
+					if (closest_length > getDistance(springbox->corners[i]->position, info.collisionPointWorld)) 
+					{
+						closest = springbox->corners[i];
+						closest_length = getDistance(springbox->corners[i]->position, info.collisionPointWorld);
+
+					}
+				}
+
+				
+				closest->addExtF(info.normalWorld * 30);
+				closest->velocity += XMVectorScale(closest->ext_F, timeStep / closest->mass);
+				
+			}
 		}
 	}
+
+	// SpringBox specific adjustments
+
+
+	for each (auto sb in springboxes) 
+	{
+		sb->addVelocity(XMVectorGetByIndex(sb->velocity, 0), XMVectorGetByIndex(sb->velocity, 1), XMVectorGetByIndex(sb->velocity, 2));
+		
+
+	}
+
 }
 
 void RigidBodyInit(int mode)
@@ -1431,13 +1463,29 @@ void Demo_6_Init()
 	h_timeStep = 0.1f;
 	g_bApplyGravity = false;
 
-	float stiffness = 40.f;
-	SpringBox* sb = addSpringBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
-	//Box* box2 = addBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR());
-	sb->addVelocity(0.5f, 0.f, 0.f);
+	std::mt19937 eng;
+	std::uniform_real_distribution<float> randVelocity(0.5f, 2.0f);
+	std::uniform_real_distribution<float> randPosition(0.0f, 2.0f);
 
-	Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(3.0f, 0.5f, 0.f, 0.f), 4, false, XMVECTOR());
-	box1->addVelocity(-0.5f, 0.f, 0.f);
+	float stiffness = 110.f;
+	SpringBox* sb = addSpringBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
+	sb->addVelocity(0.f, 0.f, 0.f);
+	
+	/*Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(3.50f, 0.7f, 1.f, 0.f), 0.1f, false, XMVECTOR());
+	box1->addVelocity(-1.f, 0.f, 0.f);
+
+	Box* box2 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(-3.50f, 0.2f, 1.f, 0.f), 0.1f, false, XMVECTOR());
+	box2->addVelocity(1.5f, 0.f, 0.f);
+
+	Box* box3 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(1.f, 8.f, 1.f, 0.f), 0.1f, false, XMVECTOR());
+	box3->addVelocity(-0.5f, -1.5f, 0.f);*/
+
+	for (int i = 0; i < 5; ++i) 
+	{
+		Box* boxM = addBox(0.25f, 0.25f, 0.25f, XMVectorSet(5+ i * 2.f, randPosition(eng), randPosition(eng)-1.f, 0.f), 1.f, false, XMVECTOR());
+		boxM->addVelocity(-1 * randVelocity(eng), 0.f, 0.f);
+	}
+
 }
 
 void deleteAllObjects()
@@ -1474,6 +1522,11 @@ void PhysicValuesInit()
 	Point::f_Mass = &g_fMass;
 	Point::f_Gravity = &g_fGravity;
 	Spring::damping = &g_fDamping;
+}
+
+float getDistance(XMVECTOR a, XMVECTOR b) 
+{
+	return XMVectorGetByIndex(XMVector4Length(XMVectorSubtract(a, b)),0);
 }
 
 void printVector(XMVECTOR vec) 
