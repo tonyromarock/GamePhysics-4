@@ -136,6 +136,8 @@ void RigidCollInit();
 void Demo_4_Init();
 void Demo_5_Init();
 void Demo_6_Init();
+void Demo_7_Init();
+void Demo_8_Init();
 void deleteAllObjects();
 float getDistance(XMVECTOR a, XMVECTOR b);
 
@@ -150,7 +152,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     g_pTweakBar = TwNewBar("TweakBar");
 	TwDefine(" TweakBar color='0 128 128' alpha=128 ");
 
-	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4,Demo5,Demo6");
+	TwType TW_TYPE_TESTCASE = TwDefineEnumFromString("Test Scene", "BasicTest,Setup1,Setup2,Setup3,Demo1,Demo2,Demo3,Demo4,Demo5,Demo6,Demo7,Demo8");
 	TwAddVarRW(g_pTweakBar, "Test Scene", TW_TYPE_TESTCASE, &g_iTestCase, "");
 	// HINT: For buttons you can directly pass the callback function as a lambda expression.
 	TwAddButton(g_pTweakBar, "Reset Scene", [](void *){g_iPreTestCase = -1; }, nullptr, "");
@@ -199,6 +201,22 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 		TwAddVarRW(g_pTweakBar, "Damping", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
 		break;
 	case 9:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
+		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
+		TwAddVarRW(g_pTweakBar, "Damping", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		break;
+	case 10:
+		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
+		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
+		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
+		TwAddVarRW(g_pTweakBar, "Add Gravity", TW_TYPE_BOOLCPP, &g_bApplyGravity, "");
+		TwAddVarRW(g_pTweakBar, "Midpoint", TW_TYPE_BOOLCPP, &g_bMidpoint, "");
+		TwAddVarRW(g_pTweakBar, "Damping", TW_TYPE_FLOAT, &g_fDamping, "min=0.00 step=0.5 max=8.00");
+		break;
+	case 11:
 		TwAddVarRW(g_pTweakBar, "Draw Box", TW_TYPE_BOOLCPP, &g_bDrawBoxes, "");
 		TwAddVarRW(g_pTweakBar, "TimeFactor", TW_TYPE_FLOAT, &g_fTimeSpeedUp, "min=0.00 step=0.5");
 		TwAddVarRW(g_pTweakBar, "Bounciness", TW_TYPE_FLOAT, &g_fCConst, "min=0.00 step=0.1 max=1.00");
@@ -818,6 +836,20 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 			g_bDrawSprings = true;
 			Demo_6_Init();
 			break;
+		case 10:
+			cout << "Demo7\n";
+			g_bDrawBoxes = true;
+			g_bDrawPoints = true;
+			g_bDrawSprings = true;
+			Demo_7_Init();
+			break;
+		case 11:
+			cout << "Demo8\n";
+			g_bDrawBoxes = true;
+			g_bDrawPoints = true;
+			g_bDrawSprings = true;
+			Demo_8_Init();
+			break;
 		default:
 			cout << "Empty Test!\n";
 			break;
@@ -871,6 +903,8 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext)
 	case 7:
 	case 8:
 	case 9:
+	case 10:
+	case 11:
 		time_counter += fElapsedTime;
 		if (time_counter > (h_timeStep/g_fTimeSpeedUp))
 		{
@@ -933,6 +967,8 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 	case 7:
 	case 8:
 	case 9:
+	case 10:
+	case 11:
 		// Draw a box
 		if (g_bDrawBoxes)	{
 			DrawBoxes(pd3dImmediateContext);
@@ -1467,25 +1503,53 @@ void Demo_6_Init()
 	std::uniform_real_distribution<float> randVelocity(0.5f, 2.0f);
 	std::uniform_real_distribution<float> randPosition(0.0f, 2.0f);
 
-	float stiffness = 110.f;
+	float stiffness = 70.f;
 	SpringBox* sb = addSpringBox(2.f, 2.f, 2.f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
 	sb->addVelocity(0.f, 0.f, 0.f);
 	
-	/*Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(3.50f, 0.7f, 1.f, 0.f), 0.1f, false, XMVECTOR());
-	box1->addVelocity(-1.f, 0.f, 0.f);
-
-	Box* box2 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(-3.50f, 0.2f, 1.f, 0.f), 0.1f, false, XMVECTOR());
-	box2->addVelocity(1.5f, 0.f, 0.f);
-
-	Box* box3 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(1.f, 8.f, 1.f, 0.f), 0.1f, false, XMVECTOR());
-	box3->addVelocity(-0.5f, -1.5f, 0.f);*/
-
 	for (int i = 0; i < 5; ++i) 
 	{
 		Box* boxM = addBox(0.25f, 0.25f, 0.25f, XMVectorSet(5+ i * 2.f, randPosition(eng), randPosition(eng)-1.f, 0.f), 1.f, false, XMVECTOR());
 		boxM->addVelocity(-1 * randVelocity(eng), 0.f, 0.f);
 	}
 
+}
+
+// Demo 7
+void Demo_7_Init()
+{
+	deleteAllObjects();
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+
+	float stiffness = 70.f;
+	SpringBox* sb = addSpringBox(1.5f, 1.5f, 1.5f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
+	sb->addVelocity(0.f, 0.f, 0.f);
+
+	Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(4.f, 4.f, 4.f, 0.f), 100, false, XMVECTOR());
+	box1->addVelocity(-1.f, -1.f, -1.f);
+
+}
+
+// Demo 8
+void Demo_8_Init()
+{
+	deleteAllObjects();
+	h_timeStep = 0.1f;
+	g_bApplyGravity = false;
+	
+
+	float stiffness = 70.f;
+	SpringBox* sb = addSpringBox(1.5f, 1.5f, 1.5f, XMVectorSet(0.f, 0.5f, 0.f, 0.f), 10, false, XMVECTOR(), stiffness);
+	sb->addVelocity(0.f, 0.f, 0.f);
+
+	Box* box1 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(4.f, 1.f, 0.f, 0.f), 100, false, XMVECTOR());
+	box1->addVelocity(-1.f, 0.f, 0.f);
+
+	Box* box2 = addBox(0.5f, 0.5f, 0.5f, XMVectorSet(-4.f, 1.f, 0.f, 0.f), 100, false, XMVECTOR());
+	box2->addVelocity(1.f, 0.f, 0.f);
+
+	
 }
 
 void deleteAllObjects()
